@@ -20,6 +20,25 @@ def index():
     return render_template("index.html", products=prods, pages=math.ceil(total/page_size))
 
 
+@app.route('/products/<product_id>')
+def details(product_id):
+    return render_template('details.html',
+                           product=dao.get_product_by_id(product_id),
+                           comments=dao.load_comments(product_id))
+
+
+@app.route('/api/products/<product_id>/comments', methods=['post'])
+def add_comment(product_id):
+    c = dao.add_comment(content=request.json.get('content'), product_id=product_id)
+    return {
+        'content': c.content,
+        'created_date': c.created_date,
+        'user': {
+            'avatar': c.user.avatar
+        }
+    }
+
+
 @app.route("/login", methods=['get', 'post'])
 def login_process():
     if request.method.__eq__("POST"):
@@ -28,7 +47,9 @@ def login_process():
         user = dao.auth_user(username=username, password=password)
         if user:
             login_user(user)
-            return redirect('/')
+
+            next = request.args.get('next')
+            return redirect(next if next else '/')
 
     return render_template('login.html')
 
@@ -108,6 +129,42 @@ def add_to_cart():
     print(cart)
 
     return jsonify(utils.stats_cart(cart))
+
+
+@app.route('/api/carts/<product_id>', methods=['put'])
+def update_cart(product_id):
+    cart = session.get('cart')
+
+    if cart and product_id in cart:
+        quantity = int(request.json.get('quantity', 0))
+        cart[product_id]['quantity'] = quantity
+
+    session['cart'] = cart
+
+    return jsonify(utils.stats_cart(cart))
+
+
+@app.route('/api/carts/<product_id>', methods=['delete'])
+def delete_cart(product_id):
+    cart = session.get('cart')
+
+    if cart and product_id in cart:
+        del cart[product_id]
+
+    session['cart'] = cart
+
+    return jsonify(utils.stats_cart(cart))
+
+
+@app.route('/api/pay', methods=['post'])
+def pay():
+    try:
+        dao.add_receipt(session.get('cart'))
+    except:
+        return jsonify({'status': 500})
+    else:
+        del session['cart']
+        return jsonify({'status': 200})
 
 
 @app.route('/cart')
